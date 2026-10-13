@@ -28,7 +28,7 @@ export default function App() {
       setStatus(nextStatus)
       setData(await a.json())
     } catch {
-      setStatus({ ready: false, classes: [], features: [], error: 'API is offline. Start the Python API in the second terminal.' })
+      setStatus({ ready: false, classes: [], features: [], error: 'The hosted API is waking up or temporarily unavailable. Retry in a moment; you do not need to start VS Code.' })
     }
   }
   useEffect(() => { if (auth?.token) refresh() }, [auth?.token])
@@ -125,16 +125,37 @@ function LoginPage({ onLogin }) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  async function waitForHostedApi() {
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      try {
+        const health = await fetch(`${API}/health`, { cache: 'no-store' })
+        if (health.ok) return
+        if (health.status < 500) throw new Error(`API health check returned ${health.status}.`)
+      } catch (error) {
+        if (attempt === 8) break
+      }
+      if (attempt < 8) {
+        setError('Waking the hosted API automatically… Please wait; you do not need to start VS Code.')
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    }
+    throw new Error('The hosted API is still starting. Wait about a minute, then try again. You do not need to start it in VS Code.')
+  }
   async function submit(e) {
     e.preventDefault(); setBusy(true); setError('')
     try {
       if (view === 'signup' && password !== confirmPassword) throw new Error('The passwords do not match.')
+      await waitForHostedApi()
+      setError('')
       const res = await fetch(`${API}/${view === 'signup' ? 'signup' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) })
       const result = await res.json()
       if (!res.ok) throw new Error(result.detail || (view === 'signup' ? 'Could not create your account.' : 'Could not sign in.'))
       if (view === 'login' && result.role !== role) throw new Error(`These credentials belong to the ${result.role} account. Choose the matching sign-in tab.`)
       localStorage.setItem('customerLensAuth', JSON.stringify(result)); onLogin(result)
-    } catch (e) { setError(e.message.includes('Failed to fetch') ? 'The Python API is offline. Start it in a VS Code terminal, then try again.' : e.message) }
+    } catch (e) {
+      const message = String(e?.message || e)
+      setError(message.includes('Failed to fetch') ? 'The hosted API could not be reached. It may still be waking; try again in a moment. VS Code does not need to be running.' : message)
+    }
     finally { setBusy(false) }
   }
   const signup = view === 'signup'
