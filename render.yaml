@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: customer-lens-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: APP_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: web
+          name: customer-lens-web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+  - type: web
+    name: customer-lens-web
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: customer-lens-api
+          envVarKey: RENDER_EXTERNAL_URL
